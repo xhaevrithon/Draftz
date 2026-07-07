@@ -19,7 +19,9 @@
 //   make
 //
 //  Direct compilation:
-//   g++ main.cpp -std=c++17 -lfltk -lfltk_images -o Draftz#include <FL/Fl.H>
+//   g++ main.cpp -std=c++17 -lfltk -lfltk_images -o Draftz
+
+#include <FL/Fl.H>
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Menu_Bar.H>
 #include <FL/Fl_Text_Editor.H>
@@ -335,5 +337,3 @@ int main()
 
 //
 //============================================================
-
-
