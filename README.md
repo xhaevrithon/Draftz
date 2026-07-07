@@ -11,6 +11,12 @@
 - ↩️ **Undo** - Undo your last actions
 - ↪️ **Redo** - Redo undone actions
 
+## Install (Releases)
+
+Pre-built binaries for common operating systems may be provided on the project's Releases page. If a release is available for your OS, download the appropriate archive or installer from Releases, extract it (if necessary), and run the included Draftz binary.
+
+If no suitable release is available for your platform, follow the build instructions below to compile from source.
+
 ## Requirements
 
 ### Debian/Ubuntu
@@ -137,7 +143,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Contributing
 
-Contributions are welcome! Feel free to fork this project and submit pull requests.
+This repository is maintained by the project owner. Only the repository owner (xhaevrithon) may change project settings. Contributions via pull requests are not accepted.
 
 ## Author
 
