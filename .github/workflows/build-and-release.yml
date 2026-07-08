@@ -68,22 +68,17 @@ jobs:
           path: dist/*
 
   # ---------------------------------------------------------------------
-  # MACOS - one job per chip, so Homebrew always hands us the FLTK
-  # build that actually matches the machine we're compiling on (this
-  # is what the old workflow got wrong: it tried to force one
-  # architecture's compiler flags against the other architecture's
-  # Homebrew libraries, which cannot link).
+  # MACOS - Apple Silicon only.
+  #
+  # We used to also build on macos-13 (Intel) here, but that runner
+  # pool is being phased out by GitHub and can sit "waiting for a
+  # runner" for a very long time (or indefinitely) on free/private
+  # repos. Apple Silicon is what virtually every Mac sold today runs,
+  # so we just build that.
   # ---------------------------------------------------------------------
   build-macos:
-    name: Build macOS (${{ matrix.name }})
-    strategy:
-      matrix:
-        include:
-          - os: macos-13     # Intel runner
-            name: intel-x86_64
-          - os: macos-14     # Apple Silicon runner
-            name: apple-silicon
-    runs-on: ${{ matrix.os }}
+    name: Build macOS (Apple Silicon)
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -119,11 +114,11 @@ jobs:
           </plist>
           EOF
 
-          zip -r "dist/Draftz-macos-${{ matrix.name }}-${TAG}.zip" "Draftz.app"
+          zip -r "dist/Draftz-macos-apple-silicon-${TAG}.zip" "Draftz.app"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.name }}-artifacts
+          name: macos-apple-silicon-artifacts
           path: dist/*
 
   # ---------------------------------------------------------------------
@@ -225,7 +220,7 @@ jobs:
 
             This release includes ready-to-run builds for:
             - **Windows** 10 / 11 (x64)
-            - **macOS** - Intel and Apple Silicon
+            - **macOS** - Apple Silicon (M1/M2/M3/M4)
             - **Linux** - Debian/Ubuntu (x64), as both a `.tar.gz` and a `.deb` package
 
             `SHA256SUMS.txt` is included so you can verify your download.
