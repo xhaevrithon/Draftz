@@ -1,0 +1,237 @@
+name: Build and Release
+
+# Run this either by pushing a tag like "v1.0.0", or manually from the
+# Actions tab (Run workflow button) - in that case you can optionally
+# type a tag name, or leave it blank and it'll use "dev-<run number>".
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create release for (e.g., v1.0.0)'
+        required: false
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # ---------------------------------------------------------------------
+  # LINUX (Debian / Ubuntu), x64 only.
+  # ---------------------------------------------------------------------
+  build-linux:
+    name: Build Linux (x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libfltk1.3-dev
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release -j"$(nproc)"
+
+      - name: Package (tarball + .deb)
+        run: |
+          mkdir -p dist
+          cp build/Draftz dist/
+
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          [ -z "$TAG" ] && TAG="dev"
+
+          # Plain tarball - works on any Linux distro.
+          cd dist
+          tar -czf "Draftz-linux-x86_64-${TAG}.tar.gz" Draftz
+          cd ..
+
+          # .deb package - for Debian/Ubuntu's package manager.
+          mkdir -p draftz-deb/usr/bin draftz-deb/DEBIAN
+          cp build/Draftz draftz-deb/usr/bin/
+          chmod +x draftz-deb/usr/bin/Draftz
+          cat > draftz-deb/DEBIAN/control <<EOF
+          Package: draftz
+          Version: ${TAG#v}
+          Architecture: amd64
+          Maintainer: xhaevrithon <xhaevrithon@github.com>
+          Description: Draftz - a simple, lightweight text editor built with C++ and FLTK
+          Depends: libfltk1.3
+          EOF
+          fakeroot dpkg-deb --build draftz-deb "dist/draftz-${TAG}-amd64.deb"
+
+          rm dist/Draftz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-artifacts
+          path: dist/*
+
+  # ---------------------------------------------------------------------
+  # MACOS - one job per chip, so Homebrew always hands us the FLTK
+  # build that actually matches the machine we're compiling on (this
+  # is what the old workflow got wrong: it tried to force one
+  # architecture's compiler flags against the other architecture's
+  # Homebrew libraries, which cannot link).
+  # ---------------------------------------------------------------------
+  build-macos:
+    name: Build macOS (${{ matrix.name }})
+    strategy:
+      matrix:
+        include:
+          - os: macos-13     # Intel runner
+            name: intel-x86_64
+          - os: macos-14     # Apple Silicon runner
+            name: apple-silicon
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install fltk cmake
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release -j"$(sysctl -n hw.ncpu)"
+
+      - name: Package (.app in a .zip)
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          [ -z "$TAG" ] && TAG="dev"
+
+          mkdir -p dist "Draftz.app/Contents/MacOS" "Draftz.app/Contents/Resources"
+          cp build/Draftz "Draftz.app/Contents/MacOS/"
+          chmod +x "Draftz.app/Contents/MacOS/Draftz"
+
+          cat > "Draftz.app/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key><string>Draftz</string>
+            <key>CFBundleName</key><string>Draftz</string>
+            <key>CFBundleIdentifier</key><string>com.draftz.app</string>
+            <key>CFBundleVersion</key><string>${TAG#v}</string>
+            <key>CFBundleShortVersionString</key><string>${TAG#v}</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+          </dict>
+          </plist>
+          EOF
+
+          zip -r "dist/Draftz-macos-${{ matrix.name }}-${TAG}.zip" "Draftz.app"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.name }}-artifacts
+          path: dist/*
+
+  # ---------------------------------------------------------------------
+  # WINDOWS, x64 only, targeting Windows 10/11.
+  #
+  # The old workflow used vcpkg + MSVC with a broken/invalid pinned
+  # commit hash (that's a guaranteed checkout failure), plus it ran
+  # bash-style commands like "mkdir -p" under PowerShell, where that
+  # flag doesn't exist and the step just errors out.
+  #
+  # This version uses MSYS2/MinGW instead - it's a much simpler, more
+  # reliable way to get FLTK on a Windows runner (one package install,
+  # no toolset juggling), and everything below runs in an actual bash
+  # shell, so there's no PowerShell/bash syntax mismatch.
+  # ---------------------------------------------------------------------
+  build-windows:
+    name: Build Windows (x64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # msys2 steps below need a normal (non-msys2) shell for checkout,
+          # but actions/checkout doesn't care about "defaults.run.shell" -
+          # it's a JS action, so this is safe as-is.
+          fetch-depth: 1
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-fltk
+            zip
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Package
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          [ -z "$TAG" ] && TAG="dev"
+
+          mkdir -p dist
+          cp build/Draftz.exe dist/
+          cd dist
+          zip "Draftz-windows-x64-${TAG}.zip" Draftz.exe
+          rm Draftz.exe
+          cd ..
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-artifacts
+          path: dist/*
+
+  # ---------------------------------------------------------------------
+  # Collect every platform's build and publish them as one GitHub
+  # Release, with checksums and a description of what Draftz is.
+  # ---------------------------------------------------------------------
+  create_release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-macos, build-windows]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Organize and checksum artifacts
+        run: |
+          mkdir -p release-assets
+          find all-artifacts -type f \( -name "*.tar.gz" -o -name "*.deb" -o -name "*.zip" \) -exec cp {} release-assets/ \;
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cd ..
+          ls -lah release-assets/
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          [ -z "$TAG" ] && TAG="dev-${{ github.run_number }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Draftz ${{ steps.tag.outputs.tag }}
+          body: |
+            **Draftz** is a lightweight, simple text editor built with C++ and the FLTK GUI toolkit.
+
+            This release includes ready-to-run builds for:
+            - **Windows** 10 / 11 (x64)
+            - **macOS** - Intel and Apple Silicon
+            - **Linux** - Debian/Ubuntu (x64), as both a `.tar.gz` and a `.deb` package
+
+            `SHA256SUMS.txt` is included so you can verify your download.
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
