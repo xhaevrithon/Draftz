@@ -1,6 +1,6 @@
 # Draftz
 
-**Draftz** is a simple, lightweight text editor built with C++ and FLTK (Fast Light Toolkit). It provides essential text editing features in a clean, minimalist interface.
+**Draftz** is a simple, lightweight text editor developed by [**Xhaevrithon**](https://github.com/xhaevrithon). Built with C++ and FLTK (Fast Light Toolkit), it provides essential text editing features in a clean, minimalist interface.
 
 ## Features
 
@@ -147,7 +147,7 @@ This repository is maintained by the project owner. Only the repository owner (x
 
 ## Author
 
-**xhaevrithon**
+[**Xhaevrithon**](https://github.com/xhaevrithon).
 
 ## Support
 
